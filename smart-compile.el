@@ -1,4 +1,4 @@
-;;; smart-compile.el --- an interface to `compile'
+;;; smart-compile.el --- an interface to `compile' -*- lexical-binding: t -*-
 
 ;; Copyright (C) 1998-2017  by Seiji Zenitani
 
@@ -84,6 +84,8 @@ The following %-sequences will be replaced by:
 
   %o  value of `smart-compile-option-string'  ( \"user-defined\" ).
 
+  %p  set cursor position in minibuffer or at end if not specified.
+
 If the second item of the alist element is an emacs-lisp FUNCTION,
 evaluate FUNCTION instead of running a compilation command.
 "
@@ -98,16 +100,18 @@ evaluate FUNCTION instead of running a compilation command.
    :group 'smart-compile)
 (put 'smart-compile-alist 'risky-local-variable t)
 
-(defconst smart-compile-replace-alist '(
-  ("%F" . (buffer-file-name))
-  ("%f" . (file-name-nondirectory (buffer-file-name)))
-  ("%n" . (file-name-sans-extension
-           (file-name-nondirectory (buffer-file-name))))
-  ("%e" . (or (file-name-extension (buffer-file-name)) ""))
-  ("%o" . smart-compile-option-string)
-;;   ("%U" . (user-login-name))
-  )
+(defconst smart-compile-replace-alist
+  '(("%F" . (buffer-file-name))
+    ("%f" . (file-name-nondirectory (buffer-file-name)))
+    ("%n" . (file-name-sans-extension
+             (file-name-nondirectory (buffer-file-name))))
+    ("%e" . (or (file-name-extension (buffer-file-name)) ""))
+    ("%o" . smart-compile-option-string)
+    ("%p") ;; used to set cursor position in compile minibuffer
+    ;; ("%U" . (user-login-name))
+    )
   "Alist of %-sequences for format control strings in `smart-compile-alist'.")
+
 (put 'smart-compile-replace-alist 'risky-local-variable t)
 
 (defvar smart-compile-check-makefile t)
@@ -213,19 +217,20 @@ which is defined in `smart-compile-alist'."
 
 (defun smart-compile-string (format-string)
   "Document forthcoming..."
-  (if (and (boundp 'buffer-file-name)
-           (stringp buffer-file-name))
-      (let ((rlist smart-compile-replace-alist)
-            (case-fold-search nil))
-        (while rlist
-          (while (string-match (caar rlist) format-string)
+  (when (and (boundp 'buffer-file-name)
+             (stringp buffer-file-name))
+    (let ((case-fold-search nil)
+          curpos)
+      (dolist (elt smart-compile-replace-alist)
+        (let ((token (car elt))
+	      (replace (cdr elt)))
+	  (while (string-match token format-string)
+            (when (string= "%p" token)
+              (setq curpos (match-beginning 0)))
             (setq format-string
                   (replace-match
-                   (eval (cdar rlist)) t nil format-string)))
-          (setq rlist (cdr rlist))
-          )
-        ))
-  format-string)
+                   (eval (or replace "")) t nil format-string)))))
+      `(cons ,format-string ,(1+ (or curpos (length format-string)))))))
 
 (provide 'smart-compile)
 
